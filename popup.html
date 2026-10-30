@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img class="logo" src="icons/icon48.png" alt="" />
+      <div>
+        <h1>Ads Library Filter</h1>
+        <p class="sub">Hides competitors already in your sheet</p>
+      </div>
+    </div>
+    <label class="switch" title="Turn filtering on/off">
+      <input type="checkbox" id="enabled" />
+      <span class="track"><span class="thumb"></span></span>
+    </label>
+  </header>
+
+  <section class="stats">
+    <div class="stat">
+      <strong id="domainCount">–</strong>
+      <span>websites in sheet</span>
+    </div>
+    <div class="stat accent">
+      <strong id="hiddenCount">–</strong>
+      <span id="hiddenLabel">existing ads on this page</span>
+    </div>
+  </section>
+
+  <section class="mode">
+    <span class="mode-label">Existing ads</span>
+    <div class="segmented" role="radiogroup">
+      <button data-mode="hide" role="radio">Vanish</button>
+      <button data-mode="dim" role="radio">Highlight</button>
+    </div>
+  </section>
+
+  <p id="error" class="error" hidden></p>
+
+  <footer>
+    <span class="sync-state"><span id="syncDot" class="dot"></span><span id="syncText">Not synced yet</span></span>
+    <button id="sync" class="link">Sync now</button>
+  </footer>
+
+  <div class="credit">Developed with <span class="heart">♥</span> by <strong>Aqeel Ahmed</strong></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

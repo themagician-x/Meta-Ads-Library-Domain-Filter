@@ -1,0 +1,123 @@
+/* ---------- Matched ad cards ---------- */
+
+.adf-marked {
+  position: relative !important;
+  /* Own stacking context: the box/label layer with the card, so Facebook's
+     sticky header still covers them when the card scrolls underneath. */
+  isolation: isolate;
+  transition: opacity 280ms ease, transform 280ms ease;
+}
+
+/* Red box + soft red overlay on top of the card. */
+.adf-marked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border: 2px solid #e5484d;
+  border-radius: 10px;
+  background: rgba(229, 72, 77, 0.12);
+  box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.12);
+  animation: adf-fade-in 280ms ease both;
+}
+
+/* Label tag sitting on the top border. */
+.adf-marked::before {
+  content: "Already in sheet · " attr(data-adf-match);
+  position: absolute;
+  top: -11px;
+  left: 14px;
+  z-index: 2;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  background: #e5484d;
+  color: #fff;
+  font: 600 11px/1 system-ui, -apple-system, sans-serif;
+  letter-spacing: 0.2px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(229, 72, 77, 0.35);
+  animation: adf-fade-in 280ms ease both;
+}
+
+/* Fading/shrinking out before being removed from the layout. */
+.adf-leaving {
+  opacity: 0 !important;
+  transform: scale(0.96);
+}
+
+.adf-hidden {
+  display: none !important;
+}
+
+@keyframes adf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------- Floating control (bottom right) ---------- */
+
+.adf-bar {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #1c2b33;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  font: 600 12px/1 system-ui, -apple-system, sans-serif;
+  user-select: none;
+}
+
+.adf-bar button {
+  all: unset;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #fff;
+  transition: background 160ms ease;
+}
+
+.adf-count {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+.adf-count:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.adf-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.3);
+}
+
+.adf-action {
+  background: #e5484d;
+}
+
+.adf-action:hover {
+  background: #d13a3f;
+}
+
+/* While ads are vanished, "Show" is the main action. */
+.adf-bar.adf-is-hidden .adf-action {
+  background: #fff;
+  color: #1c2b33 !important;
+}
+
+.adf-bar.adf-is-hidden .adf-action:hover {
+  background: #e4e6eb;
+}
