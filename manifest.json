@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ads Library Domain Filter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Hides Facebook Ads Library results whose domains already exist in your Google Sheet.",
   "permissions": [
     "storage",

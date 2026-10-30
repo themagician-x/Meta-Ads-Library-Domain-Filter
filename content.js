@@ -1,6 +1,9 @@
 // Runs on facebook.com/ads/library and hides ad cards whose domain is already known.
 
-const LIBRARY_ID_RE = /Library ID:?\s*\d+/i;
+const LIBRARY_LABEL_RE = /Library ID/i;
+const LIBRARY_ID_RE = /Library ID:?\s*(\d{5,})/i;
+const PAGE_CHROME_SELECTOR =
+  'input[type="search"], input[placeholder*="Search" i], [role="combobox"], [role="navigation"], [role="banner"]';
 const CAPTION_DOMAIN_RE = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}\/?$/i;
 
 let state = { enabled: true, mode: 'dim', domains: new Set() };
@@ -15,7 +18,12 @@ async function init() {
   await loadState();
   createBadge();
   scan();
-  new MutationObserver(debounce(scan, 300)).observe(document.body, { childList: true, subtree: true });
+  const scheduleScan = throttle(scan, 300, 1000);
+  new MutationObserver((records) => {
+    // Ignore changes made inside our own floating control.
+    if (records.every((r) => r.target.closest?.('.adf-bar'))) return;
+    scheduleScan();
+  }).observe(document.body, { childList: true, subtree: true });
   chrome.storage.onChanged.addListener(async (changes, area) => {
     if (area !== 'local') return;
     if (['enabled', 'mode', 'domains'].some((k) => k in changes)) {
@@ -38,34 +46,72 @@ async function loadState() {
 }
 
 // Every ad card contains a "Library ID: 123" label. The card root is the highest
-// ancestor of that label which contains no other label.
+// ancestor of that label which contains no *other* ad's ID.
+//
+// Built to survive other extensions (TrendTrack, PPSPY, BrandSearch, …) that inject
+// buttons, checkboxes, copied "Library ID" labels or split the ID into links:
+// - the "Library ID" text and the number may be in separate nodes,
+// - several labels with the same ID inside one card count as one ad,
+// - injected inputs inside a card don't stop the climb.
 function findCards() {
   const labels = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (LIBRARY_ID_RE.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT)
+    acceptNode: (n) =>
+      LIBRARY_LABEL_RE.test(n.nodeValue) && !n.parentElement?.closest('.adf-bar')
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT
   });
-  while (walker.nextNode()) labels.push(walker.currentNode.parentElement);
-
-  const counts = new Map();
-  for (const label of labels) {
-    for (let el = label; el && el !== document.body; el = el.parentElement) {
-      counts.set(el, (counts.get(el) || 0) + 1);
-    }
+  while (walker.nextNode()) {
+    const el = walker.currentNode.parentElement;
+    const id = el && libraryIdFor(el);
+    if (id) labels.push({ el, key: id }); // labels without a number (e.g. injected "Copy Library ID" buttons) are ignored
   }
 
-  const cards = [];
-  for (const label of labels) {
-    let card = label;
-    for (let depth = 0; depth < 25; depth++) {
+  // For every ancestor, the set of distinct ads (IDs) it contains.
+  const adsInside = new Map();
+  for (const { el, key } of labels) {
+    for (let node = el; node && node !== document.body; node = node.parentElement) {
+      let set = adsInside.get(node);
+      if (!set) adsInside.set(node, (set = new Set()));
+      set.add(key);
+    }
+  }
+  const singleAd = new Set(labels.map((l) => l.key)).size === 1;
+
+  // Climb from each label; when the same ad ID appears in several places
+  // (injected copies, extension sidebars), keep the biggest container — the real card.
+  const best = new Map();
+  for (const { el, key } of labels) {
+    let card = el;
+    for (let depth = 0; depth < 30; depth++) {
       const parent = card.parentElement;
-      if (!parent || parent === document.body || counts.get(parent) !== 1) break;
-      // Never climb into page chrome (search bar, filters) when only one ad is on screen.
-      if (parent.querySelector('input, [role="combobox"], [role="navigation"]')) break;
+      if (!parent || parent === document.body || adsInside.get(parent).size !== 1) break;
+      if (singleAd && (parent.querySelector(PAGE_CHROME_SELECTOR) || isGridEdge(card, parent))) break;
       card = parent;
     }
-    cards.push(card);
+    const size = card.getElementsByTagName('*').length;
+    if (!best.has(key) || size > best.get(key).size) best.set(key, { card, size });
   }
-  return cards;
+  return [...best.values()].map((b) => b.card);
+}
+
+// With a single ad on screen, nothing else stops the climb: stop once the card holds
+// the ad's outbound link and the parent is much wider (i.e. it's the results grid).
+function isGridEdge(card, parent) {
+  if (!card.offsetWidth || parent.offsetWidth < card.offsetWidth * 1.5) return false;
+  return [...card.querySelectorAll('a[href]')].some((a) => {
+    const host = normalizeDomain(unwrapFacebookLink(a.href));
+    return host && !isIgnored(host);
+  });
+}
+
+// Reads the numeric ad ID near a "Library ID" label (the number may be in a sibling/child node).
+function libraryIdFor(el) {
+  for (let node = el, i = 0; node && i < 3; node = node.parentElement, i++) {
+    const m = node.textContent.match(LIBRARY_ID_RE);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 function cardDomains(card) {
@@ -169,10 +215,19 @@ function updateBadge() {
   badge.querySelector('.adf-action').textContent = vanished ? 'Show' : 'Vanish';
 }
 
-function debounce(fn, ms) {
-  let t;
+// Waits for a quiet moment of `wait` ms, but never longer than `maxWait` ms —
+// other extensions can change the page constantly, which would starve a plain debounce.
+function throttle(fn, wait, maxWait) {
+  let timer = null;
+  let first = 0;
   return () => {
-    clearTimeout(t);
-    t = setTimeout(fn, ms);
+    const now = Date.now();
+    if (!timer) first = now;
+    clearTimeout(timer);
+    const delay = Math.min(wait, Math.max(0, maxWait - (now - first)));
+    timer = setTimeout(() => {
+      timer = null;
+      fn();
+    }, delay);
   };
 }
